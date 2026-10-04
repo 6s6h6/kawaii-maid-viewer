@@ -59,8 +59,12 @@ class App(tk.Tk):
         self.gen_btn = self.make_btn(bar, "\u2728 Generate New", self.generate)
         self.show_btn = self.make_btn(bar, "\u25B6 Slideshow", self.toggle_slideshow)
         self.save_btn = self.make_btn(bar, "\U0001F4BE Save Image", self.save)
-        for b in (self.gen_btn, self.show_btn, self.save_btn):
-            b.pack(side="left", padx=10)
+        self.pop_btn = self.make_btn(bar, "\U0001F4CC Pop Out", self.toggle_popout)
+        for b in (self.gen_btn, self.show_btn, self.save_btn, self.pop_btn):
+            b.pack(side="left", padx=8)
+        self.popout = None
+        self.popout_label = None
+        self.popout_tk = None
 
         self.bind("<space>", lambda e: self.generate())
         self.after(300, self.generate)
@@ -130,6 +134,62 @@ class App(tk.Tk):
         img.thumbnail((w, h), Image.LANCZOS)
         self.current_tk = ImageTk.PhotoImage(img)
         self.canvas.config(image=self.current_tk, text="")
+        self.render_popout()
+
+    # ---------- always-on-top pop-out ----------
+    def toggle_popout(self):
+        if self.popout is not None:
+            self.close_popout()
+            return
+        if self.current_pil is None:
+            messagebox.showinfo("Nothing yet", "Generate an image first!")
+            return
+        win = tk.Toplevel(self)
+        win.title("♡ Maid")
+        win.geometry("360x480+60+60")
+        win.minsize(120, 120)
+        win.configure(bg=PANEL)
+        win.attributes("-topmost", True)
+        win.protocol("WM_DELETE_WINDOW", self.close_popout)
+        win.bind("<Escape>", lambda e: self.close_popout())
+        # Mouse wheel over the pop-out changes its see-through level.
+        win.bind("<MouseWheel>", self._popout_opacity)
+        self.popout = win
+        self.popout_label = tk.Label(win, bg=PANEL)
+        self.popout_label.pack(fill="both", expand=True)
+        self.popout_label.bind("<Configure>", lambda e: self.render_popout())
+        self.pop_btn.config(text="❌ Close Pop Out")
+        self._keep_on_top()
+
+    def _keep_on_top(self):
+        # Re-assert topmost now and then so other apps can't bury it.
+        if self.popout is not None:
+            self.popout.attributes("-topmost", True)
+            self.popout.after(2000, self._keep_on_top)
+
+    def _popout_opacity(self, event):
+        if self.popout is None:
+            return
+        alpha = float(self.popout.attributes("-alpha"))
+        alpha += 0.05 if event.delta > 0 else -0.05
+        self.popout.attributes("-alpha", min(1.0, max(0.2, alpha)))
+
+    def render_popout(self):
+        if self.popout is None or self.current_pil is None:
+            return
+        w = max(self.popout_label.winfo_width() - 4, 50)
+        h = max(self.popout_label.winfo_height() - 4, 50)
+        img = self.current_pil.copy()
+        img.thumbnail((w, h), Image.LANCZOS)
+        self.popout_tk = ImageTk.PhotoImage(img)
+        self.popout_label.config(image=self.popout_tk)
+
+    def close_popout(self):
+        if self.popout is not None:
+            self.popout.destroy()
+        self.popout = None
+        self.popout_label = None
+        self.pop_btn.config(text="\U0001F4CC Pop Out")
 
     # ---------- slideshow ----------
     def toggle_slideshow(self):
